@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from urllib.parse import quote
 
-from ..models import PROFILE_A, RawJob
+from ..models import PROFILE_A, RawJob, normalize_key
 from .base import Source
 
 log = logging.getLogger(__name__)
@@ -58,6 +58,7 @@ class VdabSource(Source):
         locatie_naam: str = "Antwerpen (Provincie)",
         deeltijds: bool = True,
         page_size: int = 50,
+        max_results: int | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -66,6 +67,7 @@ class VdabSource(Source):
         self.locatie_naam = locatie_naam
         self.deeltijds = deeltijds
         self.page_size = page_size
+        self.max_results = max_results
 
     def fetch(self) -> list[RawJob]:
         try:
@@ -129,6 +131,8 @@ class VdabSource(Source):
             batch = data.get("resultaten", [])
             results.extend(batch)
             total = data.get("totaalAantal", 0)
+            if self.max_results and len(results) >= self.max_results:
+                return results[: self.max_results]
             if len(results) >= total or not batch:
                 break
             pagina += 1
@@ -199,6 +203,95 @@ class VdabOverheidSource(VdabSource):
         kwargs.setdefault("trefwoorden", ("ICT overheid",))
         kwargs.setdefault("deeltijds", False)
         super().__init__(**kwargs)
+
+
+# Titel-trefwoorden voor de uit te sluiten sectoren (genormaliseerd: lowercase,
+# accenten/leestekens weg). Bewust ruim — de bron wil enkel "unieke" rollen
+# overhouden, geen mainstream kantoor-/zorg-/verkoop-functies.
+_DIVERSE_BLOCK = (
+    # aankoop
+    "aankoop", "aankoper", "inkoop", "inkoper", "purchaser", "buyer",
+    # administratie
+    "administrat", "secretari", "bediende", "onthaal", "receptie", "receptionist",
+    "data entry", "office manager", "office assistant", "management assistant",
+    "dossierbeheer", "klassement", "back office", "administration",
+    # communicatie
+    "communicatie", "communications", "woordvoerder",
+    # dienstverlening
+    "dienstverlening", "klantendienst", "klantenservice", "customer", "helpdesk",
+    "servicedesk", "callcenter", "call center", "baliemedewerker", "telefonist",
+    # financieel
+    "financ", "boekhoud", "accountant", "comptab", "payroll", "controller",
+    "fiscaal", "fiscalist", "krediet", "treasury",
+    # gezondheid
+    "gezondheid", "verpleeg", "arts", "apotheek", "apotheker", "medisch",
+    "medical", "tandarts", "radiolog", "kinesi", "kine ", "ergotherap",
+    "audiolo", "audicien", "mondhygien", "psycholoog", "psycholog", "psychiatr",
+    "psychotherap", "logoped", "dietist", "podolog", "optometr", "opticien",
+    "vroedvrouw", "mondzorg", "orthopedagoog",
+    # horeca
+    "horeca", "kok ", "kelner", "barman", "barvrouw", "keuken", "afwas",
+    "zaalmedewerker", "barista", "frituur", "catering", "fastfood", "restaurant",
+    "brasserie", "pizzeria", "buffet", "tearoom",
+    # human resources
+    "human resources", "rekruter", "recruit", "talent acquisition",
+    "personeelsdienst", "personeelsmedewerker", "hr business", "hr officer",
+    "hr medewerker",
+    # juridisch
+    "juridisch", "jurist", "legal", "advocaat", "notaris", "paralegal",
+    # management
+    "manager", "management", "directeur", "afdelingshoofd", "diensthoofd",
+    "teamleider", "teamleader", "shiftleader", "shift leader", "leidinggevend",
+    "afdelingsverantwoordelijk", "floor manager", "store manager",
+    # marketing
+    "marketing", "seo ", "social media", "campagne", "copywriter",
+    # onderhoud
+    "onderhoud", "schoonmaak", "schoonmak", "poets", "cleaning", "huishoud",
+    "klusjes", "ramenwasser", "ruitenwasser", "glazenwasser",
+    # verkoop
+    "verkoop", "verkoper", "verkoopster", "sales", "winkel", "retail", "shop",
+    "kassa", "vertegenwoordig", "accountmanager", "account manager", "vendor",
+    "showroom",
+    # zorg / welzijn
+    "zorg", "verzorg", "begeleid", "opvoeder", "kinderbegeleid", "onthaalouder",
+    "animator", "maatschappelijk werk", "thuishulp", "poetshulp", "welzijn",
+    "woonassistent", "ondersteun", "inclusiecoach", "palliatie", "leefgroep",
+    "zorgkundige",
+)
+
+
+class VdabDeeltijdsSource(VdabSource):
+    """VDAB-bron voor *algemene* deeltijdse jobs — enkel de 'unieke' soorten.
+
+    Haalt een begrensd aantal deeltijdse vacatures (regio Antwerpen) en filtert
+    de mainstream sectoren weg (aankoop, administratie, communicatie,
+    dienstverlening, financieel, gezondheid, horeca, HR, juridisch, management,
+    marketing, onderhoud, verkoop, zorg) zodat enkel distinctieve rollen
+    overblijven (bv. lesgever, technieker, labo, creatief, productie…).
+
+    Opmerking: de VDAB-respons bevat geen remote/telewerk-indicatie, dus de
+    'liefst remote'-voorkeur kan hier niet hard worden afgedwongen; remote wordt
+    al gedekt door de Profiel-B-bronnen. Telewerk-titels worden wel getagd.
+    """
+
+    name = "vdab-deeltijds"
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("trefwoorden", ("",))
+        kwargs.setdefault("deeltijds", True)
+        kwargs.setdefault("max_results", 250)
+        super().__init__(**kwargs)
+
+    def fetch(self) -> list[RawJob]:
+        jobs = super().fetch()
+        kept = [
+            job for job in jobs
+            if not any(term in normalize_key(f"{job.title} {job.raw_text}")
+                       for term in _DIVERSE_BLOCK)
+        ]
+        log.info("[vdab-deeltijds] %d unieke deeltijdse jobs (van %d na sector-filter)",
+                 len(kept), len(jobs))
+        return kept
 
 
 def _normalize_contract(circuit: str) -> str | None:

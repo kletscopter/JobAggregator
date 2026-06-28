@@ -8,7 +8,7 @@ from .halftijds import HalftijdsSource
 from .ictjob import IctjobSource
 from .remoteok import RemoteOKSource
 from .remotive import RemotiveSource
-from .vdab import VdabOverheidSource, VdabSource
+from .vdab import VdabDeeltijdsSource, VdabOverheidSource, VdabSource
 from .vlaanderen import VlaanderenSource
 from .web3career import Web3CareerSource
 from .werkenbijdeoverheid import WerkenBijDeOverheidSource
@@ -20,6 +20,7 @@ __all__ = [
     "WerkenBijDeOverheidSource",
     "VdabSource",
     "VdabOverheidSource",
+    "VdabDeeltijdsSource",
     "IctjobSource",
     "VlaanderenSource",
     "ExperisSource",
@@ -38,6 +39,7 @@ ALL_SOURCES: list[type[Source]] = [
     WerkenBijDeOverheidSource,  # profiel A
     VdabSource,                 # profiel A (Playwright)
     VdabOverheidSource,         # profiel A (Playwright, IT-overheid)
+    VdabDeeltijdsSource,        # profiel A (Playwright, diverse deeltijds, sector-filter)
     IctjobSource,               # profiel A (RSS, regio-gefilterd)
     VlaanderenSource,           # profiel A (overheid-API, regio-gefilterd)
     ExperisSource,              # profiel A (WordPress/Matador, regio-gefilterd)
