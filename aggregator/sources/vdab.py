@@ -185,6 +185,22 @@ class VdabSource(Source):
         )
 
 
+class VdabOverheidSource(VdabSource):
+    """VDAB-variant voor IT-jobs bij de overheid (vdab.be/.../it-jobs-overheid).
+
+    Zelfde Playwright-machinerie als de basis-VDAB-bron, maar zoekt op
+    'ICT overheid' (levert POLITIE, De Lijn, OVAM, lokale besturen…) en niet
+    enkel deeltijds — voltijdse overheids-IT blijft zo zichtbaar in Profiel A.
+    """
+
+    name = "vdab-overheid"
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("trefwoorden", ("ICT overheid",))
+        kwargs.setdefault("deeltijds", False)
+        super().__init__(**kwargs)
+
+
 def _normalize_contract(circuit: str) -> str | None:
     """Map VDAB-arbeidscircuit naar een term die de scoring herkent."""
     c = circuit.lower()
