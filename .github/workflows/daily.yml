@@ -1,0 +1,77 @@
+name: Dagelijkse vacature-digest
+
+on:
+  schedule:
+    # 05:00 UTC = 07:00 Brussel (zomertijd) / 06:00 (wintertijd). Pas aan naar wens.
+    - cron: "0 5 * * *"
+  workflow_dispatch: {}   # handmatige "Run workflow"-knop in de Actions-tab
+
+# Nodig om naar GitHub Pages te publiceren.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Voorkom dat twee runs elkaar overlappen.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python opzetten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Bewaar jobs.db tussen runs, zodat "nieuw sinds vorige run" blijft werken.
+      # Roterende key + restore-keys: herstelt de meest recente db en schrijft elke
+      # run een nieuwe cache weg.
+      - name: jobs.db herstellen (cache)
+        uses: actions/cache@v4
+        with:
+          path: jobs.db
+          key: jobs-db-${{ github.run_id }}
+          restore-keys: |
+            jobs-db-
+
+      - name: Dependencies installeren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Playwright Chromium installeren (voor VDAB-bron)
+        run: python -m playwright install --with-deps chromium
+
+      - name: Aggregator draaien
+        run: python aggregator.py
+
+      - name: Site-map klaarzetten
+        run: |
+          mkdir -p _site
+          cp digest.html _site/index.html
+          cp digest.html _site/digest.html
+          cp digest.md   _site/digest.md
+          cp jobs.json   _site/jobs.json
+
+      - name: Pages-artefact uploaden
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Naar GitHub Pages publiceren
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,6 @@
+requests>=2.31
+httpx>=0.27
+feedparser>=6.0
+selectolax>=0.3
+rapidfuzz>=3.6
+playwright>=1.40
